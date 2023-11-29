@@ -1,41 +1,41 @@
 import socket
 from threading import Thread
+import asyncio
 
 class Server():
-    def __init__(self, max_load) -> None:
+    def __init__(self, max_load, max_message_bits) -> None:
         #   Preamble
         #   Initialize server parameters
         self.host = socket.gethostname()
         self.port = 1337
         self.separator_token = "<SEP>"
         self.max_load = max_load
-        self.max_message_bits = 2048
+        self.max_message_bits = max_message_bits
         self.client_sockets = set()
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   #   Allows hot reloading of server, skip waiting for OS to release port
         self.server.bind((self.host, self.port))                            #   Binds server to host and port, telling OS to start server 
-        self._exit_flag = False
-        self._run_server()
+        self.exit_event = asyncio.Event()
 
     #   Helper method for listening to a connection
     #   TODO: Handle [error] exiting socking from client gracefully
-    def _listen(self, conn):
+    async def _listen(self, conn):
         while True:
             try:
-                data = conn.recv(self.max_message_bits).decode()
+                data = await asyncio.to_thread(conn.recv, self.max_message_bits)
             except Exception as e:
                 print(f"[!] Error: {e}")
-                self.client_sockets.remove(conn)
-                print(self.client_sockets)
+                self._remove(conn)
             else:
-                self._broadcast(data, conn)
+                self._broadcast(data.decode(), conn)
 
     #   Helper function for sending messages to all sockets in active connections
     def _broadcast(self, message, conn):
         message = message.replace(self.separator_token, ": ")
         for client in self.client_sockets:
             try:
-                client.send(message.encode())
+                if client != conn:
+                    client.send(message.encode())
             except Exception as e:
                 print(f"[!] Error: {e}")
                 self._remove(conn)
@@ -44,41 +44,36 @@ class Server():
     def _remove(self, conn):
         try:
             conn.close()
-        except:
-            pass    ##  TODO: add proper error handling if conn.close() unexpectedly fails
+        except Exception as e:
+            print(f"[!] Error: {e}")
         finally:
             self.client_sockets.remove(conn)
     
-    def _console_input(self):
-        while True:
-            command = input()
+    async def _receive_control_signals(self):
+        loop = asyncio.get_running_loop()
+        while not self.exit_event.is_set():
+            command = await loop.run_in_executor(None, input)
+
             if command.lower() == 'exit':
                 print("Exiting server...")
-                self._exit_server()
-                break
+                self.exit_event.set()
             else:
                 print(f"Unknown command: {command}")
                 
     #   Core method, running server instance
-    def _run_server(self):
+    async def _accept_connections(self):
+        connection_tasks = []
         #   Listen to a maximum of max_load connections
         self.server.listen(self.max_load)
 
         print(f"[*] Listening as {self.host}:{self.port}")
-        
-        console_thread = Thread(target=self._console_input)
-        console_thread.daemon = True
-        console_thread.start()
 
-        try:
-            while not self._exit_flag:
+        while not self.exit_event.is_set():
+            try:
                 # The accept() method of a Socket object stores two parameters
                 # connection -> socket object of the client
                 # address -> IP address of the client
-                client_socket, client_address = self.server.accept()
-
-                if self._exit_flag:
-                    break  # Exit the loop if the exit flag is set
+                client_socket, client_address = await asyncio.to_thread(self.server.accept)
 
                 print(f"[+] {client_address} connected.")
 
@@ -86,28 +81,21 @@ class Server():
                 self.client_sockets.add(client_socket)
 
                 # Spawn a new thread to listen to the requests of the new connection
-                client_thread = Thread(target=self._listen, args=(client_socket,))
+                task = asyncio.create_task(self._listen(client_socket))
+                connection_tasks.append(task)
+            except Exception as e:
+                print(f"[!] Error: {e}")
+        await asyncio.gather(*connection_tasks)
 
-                # Daemon threads end whenever the main thread ends
-                client_thread.daemon = True
-
-                client_thread.start()
-
-        except Exception as e:
-            print(f"[!] Error: {e}")
-
-        # Call the exit method to close remaining connections and sockets
-        self._exit_server()
-    
-    ##  TODO: Call this method when exiting server frontend
-    ##  FIX: Handling closed sockets
-    def _exit_server(self):
-        self._exit_flag = True
-        #   Close all sockets in client_sockets
-        if len(self.client_sockets) > 0:
-            for conn in self.client_sockets:
-                conn.close()
-        # close server socket
+    #   TODO: Diagnose "Exiting server..." inifnite loop (?) -> Maybe just call exit() and give zero f's
+    async def _run_server(self):
+        tasks = [self._receive_control_signals(), self._accept_connections()]
+        await asyncio.gather(*tasks)
+        # Make sure to wait for all client connections to be closed
+        await asyncio.gather(*(asyncio.to_thread(conn.close) for conn in self.client_sockets))
         self.server.close()
 
-instance = Server(1000)
+    
+if __name__ == "__main__":
+    server_instance = Server(1000, 2048)
+    asyncio.run(server_instance._run_server())
