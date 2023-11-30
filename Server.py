@@ -49,16 +49,16 @@ class Server():
         finally:
             self.client_sockets.remove(conn)
     
-    async def _receive_control_signals(self):
-        loop = asyncio.get_running_loop()
-        while not self.exit_event.is_set():
-            command = await loop.run_in_executor(None, input)
+    # async def _receive_control_signals(self):
+    #     loop = asyncio.get_running_loop()
+    #     while not self.exit_event.is_set():
+    #         command = await loop.run_in_executor(None, input)
 
-            if command.lower() == 'exit':
-                print("Exiting server...")
-                self.exit_event.set()
-            else:
-                print(f"Unknown command: {command}")
+    #         if command.lower() == 'exit':
+    #             print("Exiting server...")
+    #             self.exit_event.set()
+    #         else:
+    #             print(f"Unknown command: {command}")
                 
     #   Core method, running server instance
     async def _accept_connections(self):
@@ -87,9 +87,9 @@ class Server():
                 print(f"[!] Error: {e}")
         await asyncio.gather(*connection_tasks)
 
-    #   TODO: Diagnose "Exiting server..." inifnite loop (?) -> Maybe just call exit() and give zero f's
+    #   TODO: Diagnose "Exiting server..." inifnite loop (?) -> doesn't really affect execution but still annoying
     async def _run_server(self):
-        tasks = [self._receive_control_signals(), self._accept_connections()]
+        tasks = [self._accept_connections()]
         await asyncio.gather(*tasks)
         # Make sure to wait for all client connections to be closed
         await asyncio.gather(*(asyncio.to_thread(conn.close) for conn in self.client_sockets))
