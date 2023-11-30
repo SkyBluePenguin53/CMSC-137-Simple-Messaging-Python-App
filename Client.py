@@ -1,15 +1,15 @@
 import socket
 import asyncio
-from threading import Thread
+#from threading import Thread
 from aioconsole import ainput
 
 class Client():
-    def __init__(self) -> None:
+    def __init__(self, max_message_bits) -> None:
         #   Preamble
         #   Initialize client parameters
         self.host = socket.gethostname()
         self.port = 1337
-        self.max_message_bits = 2048
+        self.max_message_bits = max_message_bits
         self.separator_token = "<SEP>"
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         print(f"[*] Connecting to {self.host}:{self.port}...")
@@ -27,16 +27,18 @@ class Client():
                 if not data:
                     break
                 print("\n" + data.decode())
-            except ConnectionAbortedError:
-                print("Server disconnected. Closing client.")
-                self._close_client()
+            except Exception as e:
+                print(f"[!] Error: {e}")
                 break
-    
+        print("Server disconnected. Closing client.")
+        self._close_client()
+        
     #   Helper method to send messages to the server
     async def _send(self):
         while True:
             to_send = await ainput()    #   Asynchronous equivalent to input()
-            if to_send.lower() == '[exit]':
+            if to_send.lower() == '':   #   Input a '' to close client
+                print("Client disconnecting. Attempting to disconnect from server...")
                 self._close_client()
                 break
             to_send = f"=> {self.name}{self.separator_token}{to_send}"
@@ -51,5 +53,6 @@ class Client():
 
     def _close_client(self):
         self.server.close()
+        #exit()
 
-instance = Client()
+instance = Client(2048)

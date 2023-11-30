@@ -1,5 +1,5 @@
 import socket
-from threading import Thread
+#from threading import Thread
 import asyncio
 
 class Server():
@@ -18,7 +18,6 @@ class Server():
         self.exit_event = asyncio.Event()
 
     #   Helper method for listening to a connection
-    #   TODO: Handle [error] exiting socking from client gracefully
     async def _listen(self, conn):
         while True:
             try:
@@ -26,9 +25,11 @@ class Server():
             except Exception as e:
                 print(f"[!] Error: {e}")
                 self._remove(conn)
+                break
             else:
                 self._broadcast(data.decode(), conn)
-
+        return
+    
     #   Helper function for sending messages to all sockets in active connections
     def _broadcast(self, message, conn):
         message = message.replace(self.separator_token, ": ")
@@ -49,17 +50,18 @@ class Server():
         finally:
             self.client_sockets.remove(conn)
     
-    # async def _receive_control_signals(self):
-    #     loop = asyncio.get_running_loop()
-    #     while not self.exit_event.is_set():
-    #         command = await loop.run_in_executor(None, input)
-
-    #         if command.lower() == 'exit':
-    #             print("Exiting server...")
-    #             self.exit_event.set()
-    #         else:
-    #             print(f"Unknown command: {command}")
-                
+    #   Helper method for parsing messages from console asynchronously to broadcast announcements to clients
+    async def announce(self):
+        loop = asyncio.get_running_loop()
+        while not self.exit_event.is_set():
+            message = await loop.run_in_executor(None, input)
+            if message.lower() == '':   ##  If message is a '', commence server shutdown
+                self.shutdown()
+                break
+            print(server_message := f"=> Server: {message}")       ##  Walrus to immediately bind server_message
+            self._broadcast(server_message, None)
+        return
+    
     #   Core method, running server instance
     async def _accept_connections(self):
         connection_tasks = []
@@ -85,15 +87,26 @@ class Server():
                 connection_tasks.append(task)
             except Exception as e:
                 print(f"[!] Error: {e}")
+                break
+            
         await asyncio.gather(*connection_tasks)
+        
+        return
 
-    #   TODO: Diagnose "Exiting server..." inifnite loop (?) -> doesn't really affect execution but still annoying
-    async def _run_server(self):
-        tasks = [self._accept_connections()]
-        await asyncio.gather(*tasks)
-        # Make sure to wait for all client connections to be closed
-        await asyncio.gather(*(asyncio.to_thread(conn.close) for conn in self.client_sockets))
+    #   Helper method to shutdown server and close all sockets
+    def shutdown(self):
+        self.exit_event.set()
+        for conn in self.client_sockets:
+            conn.close()
         self.server.close()
+        
+    #   Helper method to run server with threaded coroutines
+    async def _run_server(self):
+        tasks = [self._accept_connections(), self.announce()]
+        await asyncio.gather(*tasks)
+        # Make sure to wait for all client connections to be closed, depreciated
+        #await asyncio.gather(*(asyncio.to_thread(conn.close) for conn in self.client_sockets))
+        self.shutdown()
 
     
 if __name__ == "__main__":
