@@ -1,7 +1,6 @@
 import socket
 import asyncio
-#from threading import Thread
-from aioconsole import ainput
+import threading
 
 class Client():
     def __init__(self, max_message_bits) -> None:
@@ -16,14 +15,12 @@ class Client():
         self.server.connect((self.host, self.port))
         print("[+] Connected.")
         self.name = input("Enter your preferred name: ")
-        
-        self._run_client()
     
-    #   Helper method for listening to server broadcasts
-    async def _listen(self):
+    # Helper method for listening to server broadcasts
+    def _listen(self):
         while True:
             try:
-                data = await asyncio.to_thread(self.server.recv, self.max_message_bits)     #   Receive messages from server asynchronously
+                data = self.server.recv(self.max_message_bits)
                 if not data:
                     break
                 print("\n" + data.decode())
@@ -33,11 +30,11 @@ class Client():
         print("Server disconnected. Closing client.")
         self._close_client()
         
-    #   Helper method to send messages to the server
-    async def _send(self):
+    # Helper method to send messages to the server
+    def _send(self):
         while True:
-            to_send = await ainput()    #   Asynchronous equivalent to input()
-            if to_send.lower() == '':   #   Input a '' to close client
+            to_send = input()
+            if to_send.lower() == '':
                 print("Client disconnecting. Attempting to disconnect from server...")
                 self._close_client()
                 break
@@ -55,4 +52,19 @@ class Client():
         self.server.close()
         #exit()
 
-instance = Client(2048)
+if __name__ == "__main__":
+        instance = Client(2048)
+
+        # Create and start threads for listening to server broadcasts and sending messages
+        listen_thread = threading.Thread(target=instance._listen)
+        send_thread = threading.Thread(target=instance._send)
+
+        listen_thread.start()
+        send_thread.start()
+
+        # Wait for threads to finish
+        listen_thread.join()
+        send_thread.join()
+
+        # Close the client after threads finish
+        instance._close_client()

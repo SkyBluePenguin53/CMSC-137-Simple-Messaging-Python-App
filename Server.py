@@ -1,6 +1,5 @@
 import socket
-#from threading import Thread
-import asyncio
+import threading
 
 class Server():
     def __init__(self, max_load, max_message_bits) -> None:
@@ -15,20 +14,21 @@ class Server():
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   #   Allows hot reloading of server, skip waiting for OS to release port
         self.server.bind((self.host, self.port))                            #   Binds server to host and port, telling OS to start server 
-        self.exit_event = asyncio.Event()
+        self.exit_event = False
 
-    #   Helper method for listening to a connection
-    async def _listen(self, conn):
+    # Helper method for listening to a connection
+    def _listen(self, conn):
         while True:
             try:
-                data = await asyncio.to_thread(conn.recv, self.max_message_bits)
+                data = conn.recv(self.max_message_bits)
+                if not data:
+                    break
             except Exception as e:
                 print(f"[!] Error: {e}")
                 self._remove(conn)
                 break
             else:
                 self._broadcast(data.decode(), conn)
-        return
     
     #   Helper function for sending messages to all sockets in active connections
     def _broadcast(self, message, conn):
@@ -50,65 +50,59 @@ class Server():
         finally:
             self.client_sockets.remove(conn)
     
-    #   Helper method for parsing messages from console asynchronously to broadcast announcements to clients
-    async def announce(self):
-        loop = asyncio.get_running_loop()
-        while not self.exit_event.is_set():
-            message = await loop.run_in_executor(None, input)
-            if message.lower() == '':   ##  If message is a '', commence server shutdown
+    # Helper method for parsing messages from console to broadcast announcements to clients
+    def announce(self):
+        while not self.exit_event:
+            message = input()
+            if message.lower() == '':
                 self.shutdown()
                 break
-            print(server_message := f"=> Server: {message}")       ##  Walrus to immediately bind server_message
+            print(server_message := f"=> Server: {message}")
             self._broadcast(server_message, None)
-        return
     
-    #   Core method, running server instance
-    async def _accept_connections(self):
-        connection_tasks = []
-        #   Listen to a maximum of max_load connections
+    # Core method, running server instance
+    def _accept_connections(self):
+        connection_threads = []
         self.server.listen(self.max_load)
-
         print(f"[*] Listening as {self.host}:{self.port}")
 
-        while not self.exit_event.is_set():
+        while not self.exit_event:
             try:
-                # The accept() method of a Socket object stores two parameters
-                # connection -> socket object of the client
-                # address -> IP address of the client
-                client_socket, client_address = await asyncio.to_thread(self.server.accept)
-
+                client_socket, client_address = self.server.accept()
                 print(f"[+] {client_address} connected.")
-
-                # Maintain a list of active connections to the server
                 self.client_sockets.add(client_socket)
 
                 # Spawn a new thread to listen to the requests of the new connection
-                task = asyncio.create_task(self._listen(client_socket))
-                connection_tasks.append(task)
+                thread = threading.Thread(target=self._listen, args=(client_socket,))
+                connection_threads.append(thread)
+                thread.start()
             except Exception as e:
                 print(f"[!] Error: {e}")
                 break
-            
-        await asyncio.gather(*connection_tasks)
-        
-        return
+
+        for thread in connection_threads:
+            thread.join()
 
     #   Helper method to shutdown server and close all sockets
     def shutdown(self):
-        self.exit_event.set()
+        self.exit_event = True
         for conn in self.client_sockets:
             conn.close()
         self.server.close()
         
-    #   Helper method to run server with threaded coroutines
-    async def _run_server(self):
-        tasks = [self._accept_connections(), self.announce()]
-        await asyncio.gather(*tasks)
-        # Make sure to wait for all client connections to be closed, depreciated
-        #await asyncio.gather(*(asyncio.to_thread(conn.close) for conn in self.client_sockets))
-        self.shutdown()
-
-    
 if __name__ == "__main__":
-    server_instance = Server(1000, 2048)
-    asyncio.run(server_instance._run_server())
+        server_instance = Server(1000, 2048)
+
+        # Create and start threads for listening to connections and announcing messages
+        accept_thread = threading.Thread(target=server_instance._accept_connections)
+        announce_thread = threading.Thread(target=server_instance.announce)
+
+        accept_thread.start()
+        announce_thread.start()
+
+        # Wait for threads to finish
+        accept_thread.join()
+        announce_thread.join()
+
+        # Shutdown the server after threads finish
+        server_instance.shutdown()
