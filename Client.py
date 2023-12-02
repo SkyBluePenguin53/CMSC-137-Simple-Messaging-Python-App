@@ -1,5 +1,4 @@
 import socket
-import asyncio
 import threading
 
 class Client():
@@ -40,13 +39,6 @@ class Client():
                 break
             to_send = f"=> {self.name}{self.separator_token}{to_send}"
             self.server.send(to_send.encode())
-
-    #   Core method to run both listen and send at the same time asynchronously
-    def _run_client(self):
-        #   Use asynchronous looping to listen for and send messages at the same time
-        loop = asyncio.get_event_loop()
-        tasks = [self._listen(), self._send()]
-        loop.run_until_complete(asyncio.gather(*tasks))
 
     def _close_client(self):
         self.server.close()
