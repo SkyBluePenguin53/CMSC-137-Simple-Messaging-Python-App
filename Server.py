@@ -7,7 +7,6 @@ class Server():
         #   Initialize server parameters
         self.host = socket.gethostname()
         self.port = 1337
-        self.separator_token = "<SEP>"
         self.max_load = max_load
         self.max_message_bits = max_message_bits
         self.client_sockets = set()
@@ -32,7 +31,6 @@ class Server():
     
     #   Helper function for sending messages to all sockets in active connections
     def _broadcast(self, message, conn):
-        message = message.replace(self.separator_token, ": ")
         for client in self.client_sockets:
             try:
                 if client != conn:
@@ -70,6 +68,7 @@ class Server():
             try:
                 client_socket, client_address = self.server.accept()
                 print(f"[+] {client_address} connected.")
+                self._broadcast(f"[+] A user has connected.\n", None)
                 self.client_sockets.add(client_socket)
 
                 # Spawn a new thread to listen to the requests of the new connection
