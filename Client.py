@@ -17,9 +17,6 @@ class Client:
 
         #   Use a pop-up dialog to get the user's name
         self.name = self._get_user_name()
-
-        self.queue = []
-        self.lock = threading.Lock()
         self.gui = self._GUI()
 
     #   Helper method to fetch the user's name from GUI
@@ -27,6 +24,7 @@ class Client:
         default_names = self._get_default_names()
         user_name = simpledialog.askstring("*", "Enter your preferred name:")
         if user_name:
+            self.server.send(user_name.encode())
             return user_name
         else:
             # If the user closes the dialog without entering a name, provide a random name
@@ -45,27 +43,31 @@ class Client:
     def _GUI(self):
         self.gui = tk.Tk()
         self.gui.title(self.name)
-        self.gui.geometry("400x410")
+        self.gui.geometry("400x360")
+        self.gui.eval('tk::PlaceWindow . center')
 
-        self.chatlog = Text(self.gui, bg='white')
+        self.chatlog = Text(self.gui, bg='white', width=200, height=20)
         self.chatlog.config(state=tk.DISABLED)
+        self.chatlog.pack(side = tk.TOP, padx=5, pady=5)
 
-        self.send_button = Button(self.gui, bg='black', fg='gold', text="SEND", command=self._send)
-        self.textbox = Text(self.gui, bg='white')
+        self.send_button = Button(self.gui, bg='black', fg='white', text="SEND", command=self._send)
+        self.send_button.pack(side = tk.RIGHT, padx=5, pady=5)
+        
+        self.textbox = Text(self.gui, bg='white', width=200, height=1)
+        self.textbox.pack(side = tk.LEFT, padx=5, pady=5)
+        self.textbox.focus_set()
 
-        self.chatlog.place(x=6, y=6, width='386', height='370')
-        self.textbox.place(x=6, y=380, height=20, width=330)
-        self.send_button.place(x=341, y=380, height=20, width=50)
+        self.textbox.bind("<Return>", self._press)
 
-        self.textbox.bind("<KeyRelease-Return>", self._press)
-
-        threading.Thread(target=self._listen, daemon=True).start()
+        threading.Thread(target=self._listen, daemon = True).start()
 
         self.gui.mainloop()
 
     #   Helper method to associate an event with keypress
     def _press(self, event):
         self._send()
+        #   Prevents a newline bug in the console log
+        return 'break'
 
     #   Helper method to update the chatlog
     def _update_chat(self, msg):
@@ -88,7 +90,7 @@ class Client:
     #   Helper method to send messeges to the server
     def _send(self):
         to_send = self.textbox.get("0.0", tk.END)
-        to_send = f"=> {self.name}: {to_send}"
+        to_send = f" => {self.name}: {to_send}"
         self._update_chat(to_send)
         self.textbox.delete("0.0", tk.END)
         try:
