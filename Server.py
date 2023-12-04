@@ -55,7 +55,7 @@ class Server():
             if message.lower() == '':
                 self.shutdown()
                 break
-            print(server_message := f"=> Server: {message}")
+            print(server_message := f"=> Server: {message}\n")
             self._broadcast(server_message, None)
     
     # Core method, running server instance
