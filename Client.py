@@ -23,12 +23,13 @@ class Client:
     def _get_user_name(self):
         default_names = self._get_default_names()
         user_name = simpledialog.askstring("*", "Enter your preferred name:")
-        if user_name:
-            self.server.send(user_name.encode())
-            return user_name
-        else:
-            # If the user closes the dialog without entering a name, provide a random name
-            return random.choice(default_names)
+        
+        # If the user closes the dialog without entering a name, provide a random name
+        if not user_name:
+            user_name = random.choice(default_names)
+            
+        self.server.send(user_name.encode())
+        return user_name
     
     #   Helper method to fetch default names from a text file    
     def _get_default_names(self):
@@ -37,7 +38,7 @@ class Client:
                 return [line.strip() for line in file.readlines()]
         except FileNotFoundError:
             print("Default names file not found.")
-            return ["Anonymous"]
+            return [ "Anonymous" ]
 
     #   Set GUI main loop
     def _GUI(self):
