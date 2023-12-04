@@ -1,6 +1,5 @@
 import socket
 import tkinter as tk
-from tkinter import Text, Button
 import threading
 from tkinter import Text, Button, simpledialog
 import random
